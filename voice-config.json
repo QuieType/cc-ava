@@ -1616,7 +1616,10 @@
     },
     "pronunciations": {
         "Lea": "Leah",
-        "lea": "Leah"
+        "lea": "Leah",
+        "Faj'ro": "Fah-ee-roh",
+        "faj'ro": "Fah-ee-roh",
+        "Ba'kii Kum": "Bah-Key-Kuum"
     },
     "skipPatterns": [
         "^[.!?\\-…\\s]+$",

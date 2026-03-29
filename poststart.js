@@ -17,12 +17,15 @@ ig.module('cc-ava.poststart')
         var path = require('path');
         var CONFIG_PATH = path.join(process.cwd(), 'assets', 'mod-data', 'cc-ava', 'voice-config.json');
 
-        // Cache object
         var configData = { voices: {} };
-        try {
-            configData = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
-        } catch (e) {
-            console.error("[CC-VA] Failed to load voice config:", e);
+        if (window.ccVoiceActing && window.ccVoiceActing.config) {
+            configData = window.ccVoiceActing.config;
+        } else {
+            try {
+                configData = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
+            } catch (e) {
+                console.error("[CC-VA] Failed to load voice config:", e);
+            }
         }
 
         // Simple global debug flag - avoids object reference issues
@@ -54,55 +57,28 @@ ig.module('cc-ava.poststart')
                         settings: { title: "Engine Settings" },
                         headers: {
                             "ElevenLabs Connection": {
-                                "va-api-key": {
-                                    type: "INPUT_FIELD",
-                                    init: configData.apiKey || "",
-                                    name: { en_US: "ElevenLabs API Key" },
-                                    description: { en_US: "Paste your private ElevenLabs API Key used to generate TTS audio." },
-                                    changeEvent: function (val) {
-                                        if (val && val.trim().length > 0) {
-                                            configData.apiKey = val;
-                                            saveConfig();
-                                        }
-                                    }
-                                },
-                                "va-api-key-paste": {
+                                "va-api-key-edit": {
                                     type: "BUTTON",
-                                    name: { en_US: "Paste Key from Clipboard" },
-                                    description: { en_US: "Click to securely paste your ElevenLabs API Key from your clipboard to bypass typing." },
+                                    name: { en_US: "Set API Key" },
+                                    description: { en_US: "Click to securely paste your ElevenLabs API Key via a popup prompt." },
                                     onPress: function () {
-                                        try {
-                                            var nwClip = require('nw.gui').Clipboard.get();
-                                            var text = nwClip.get('text');
-                                            if (text && text.trim().length > 0) {
-                                                configData.apiKey = text.trim();
+                                        var currentKey = configData.apiKey || "";
+                                        if (currentKey === "YOUR_ELEVENLABS_API_KEY") currentKey = "";
+                                        
+                                        window._ccvaUI.prompt("Enter your active ElevenLabs API Key:", currentKey, function(newKey) {
+                                            if (newKey === null) return; // User cancelled
+                                            
+                                            if (newKey.trim().length > 0) {
+                                                configData.apiKey = newKey.trim();
                                                 saveConfig();
-                                                console.log("[CC-VA] Pasted API Key from clipboard: " + text.trim());
+                                                console.log("[CC-VA] Saved new API Key via prompt.");
 
                                                 if (ig.soundManager && ig.soundManager.sounds) {
                                                     var sd = ig.soundManager.sounds.guiSubmit;
                                                     if (sd) sd.play();
                                                 }
-
-                                                // Sync the underlying CCModManager Options state so it doesn't revert
-                                                if (window.modmanager && modmanager.options && modmanager.options["cc-ava"]) {
-                                                    modmanager.options["cc-ava"]["va-api-key"] = configData.apiKey;
-                                                }
-
-                                                // Force exit the menu to naturally trigger a visual refresh on next open
-                                                if (sc.menu && sc.menu.currentMenu && sc.menu.currentMenu.popMenu) {
-                                                    sc.menu.popMenu();
-                                                }
-
-                                            } else {
-                                                if (ig.soundManager && ig.soundManager.sounds) {
-                                                    var sd2 = ig.soundManager.sounds.guiError;
-                                                    if (sd2) sd2.play();
-                                                }
                                             }
-                                        } catch (e) {
-                                            console.error("[CC-VA] Failed to read clipboard:", e);
-                                        }
+                                        });
                                     }
                                 },
                                 "va-model-selection": {
@@ -191,28 +167,46 @@ ig.module('cc-ava.poststart')
 
                     targetTab.headers[label] = {};
 
-                    targetTab.headers[label]["va-" + key + "-id"] = {
-                        type: "INPUT_FIELD",
-                        init: v.voiceId || "",
-                        name: { en_US: "Voice ID" },
-                        description: { en_US: "The ElevenLabs unique string ID for this character." },
-                        changeEvent: function (val) {
-                            configData.voices[key].voiceId = val;
-                            saveConfig();
-                        }
-                    };
+                    var currentPitch = typeof v.pitch === "number" ? v.pitch : 1.0;
+                    var stateIndicator = v.voiceId ? v.voiceId + " (Pitch: " + currentPitch + ")" : "UNASSIGNED";
 
-                    targetTab.headers[label]["va-" + key + "-pitch"] = {
-                        type: "INPUT_FIELD",
-                        init: (typeof v.pitch === "number" ? v.pitch : 1.0).toString(),
-                        name: { en_US: "Pitch" },
-                        description: { en_US: "Playback pitch generic multiplier (e.g. 1.00, 0.85, 1.25)." },
-                        changeEvent: function (val) {
-                            var parsed = parseFloat(val);
-                            if (!isNaN(parsed) && parsed > 0) {
-                                configData.voices[key].pitch = parsed;
-                                saveConfig();
-                            }
+                    targetTab.headers[label]["va-" + key + "-configure"] = {
+                        type: "BUTTON",
+                        name: { en_US: stateIndicator },
+                        description: { en_US: "Click to assign a Voice ID and set the pitch multiplier for this character." },
+                        onPress: function () {
+                            var currentId = configData.voices[key].voiceId || "";
+                            window._ccvaUI.prompt("Enter ElevenLabs Voice ID for '" + label + "':\n(Leave blank to clear)", currentId, function(newId) {
+                                if (newId === null) return;
+                                
+                                var currentPitch = (typeof configData.voices[key].pitch === "number" ? configData.voices[key].pitch : 1.0).toString();
+                                window._ccvaUI.prompt("Enter Pitch Multiplier for '" + label + "' (e.g. 1.0, 0.85, 1.25):", currentPitch, function(newPitch) {
+                                    if (newPitch === null) return;
+
+                                    configData.voices[key].voiceId = newId.trim();
+                                    
+                                    var parsed = parseFloat(newPitch);
+                                    if (!isNaN(parsed) && parsed > 0) {
+                                        configData.voices[key].pitch = parsed;
+                                    }
+                                    
+                                    if (newId.trim().length > 0) {
+                                        configData.voices[key].enabled = true;
+                                    }
+                                    
+                                    saveConfig();
+
+                                    if (ig.soundManager && ig.soundManager.sounds) {
+                                        var sd = ig.soundManager.sounds.guiSubmit;
+                                        if (sd) sd.play();
+                                    }
+                                    
+                                    // Force exit the menu to natively refresh the button's custom nametag
+                                    if (sc.menu && sc.menu.currentMenu && sc.menu.currentMenu.popMenu) {
+                                        sc.menu.popMenu();
+                                    }
+                                });
+                            });
                         }
                     };
                 }
@@ -227,17 +221,9 @@ ig.module('cc-ava.poststart')
                         window.modmanager.options["cc-ava"] = {};
                     }
                     var ccOpt = window.modmanager.options["cc-ava"];
-                    ccOpt["va-api-key"] = configData.apiKey || "";
                     ccOpt["va-model-selection"] = initModelIdx;
                     ccOpt["va-debug-mode"] = !!configData.debug;
                     
-                    allKeys.forEach(function(k) {
-                        var v = configData.voices[k];
-                        if (v) {
-                            ccOpt["va-" + k + "-id"] = v.voiceId || "";
-                            ccOpt["va-" + k + "-pitch"] = (typeof v.pitch === "number" ? v.pitch : 1.0).toString();
-                        }
-                    });
                 }
 
                 window.modmanager.registerAndGetModOptions(

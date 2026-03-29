@@ -30,8 +30,8 @@
             cleaned = cleaned.replace(/\\size\[\d+\]/g, '');
             cleaned = cleaned.replace(/\\[a-zA-Z]+\[[^\]]*\]/g, '');
             cleaned = cleaned.replace(/<<[A-Z]<<\[CHANGED[^\]]*\]/g, '');
-            // Remove action/emote tags: [nods], [shakes head], [sighs], etc. (but preserve numbers like [1], [4])
-            cleaned = cleaned.replace(/\[[a-zA-Z][^\]]*\]/g, '');
+            // Remove brackets but keep the text inside (preserves [Seeker], [Bergen Village], etc.)
+            cleaned = cleaned.replace(/\[([^\]]*)\]/g, '$1');
             // Apply pronunciation corrections (word-boundary replacements)
             if (pronunciations) {
                 var words = Object.keys(pronunciations);
@@ -292,6 +292,155 @@
         }
     };
 
+    // ---- UI Dialog Overlay System ----
+    window._ccvaUI = {
+        _overlay: null,
+        _modal: null,
+        _title: null,
+        _input: null,
+        _btnContainer: null,
+
+        init: function () {
+            if (this._overlay) return;
+            if (typeof document === 'undefined') return;
+
+            var styleId = 'ccva-ui-style';
+            if (!document.getElementById(styleId)) {
+                var style = document.createElement('style');
+                style.id = styleId;
+                style.innerHTML = 
+                    "#ccva-ui-bg { display:none; position:fixed; top:0; left:0; width:100%; height:100%; " +
+                    "background:rgba(0,0,0,0.6); z-index:9999999; justify-content:center; align-items:center; } " +
+                    "#ccva-ui-modal { background:linear-gradient(to bottom, #2a2a2a 0%, #1a1a1a 100%); " +
+                    "color:#fff; padding:20px; border:2px solid #586884; border-radius:4px; " +
+                    "font-family:'Consolas', 'Courier New', monospace; font-size:14px; min-width:350px; " +
+                    "box-shadow: 0px 5px 15px rgba(0,0,0,0.8), inset 0px 0px 10px rgba(0,168,243,0.3); } " +
+                    "#ccva-ui-title { font-weight:bold; margin-bottom:15px; color:#00a8f3; font-size:16px; white-space:pre-wrap; } " +
+                    "#ccva-ui-input { width:100%; background:#111; color:#fff; border:1px solid #555; " +
+                    "padding:8px; margin-bottom:15px; font-family:inherit; outline:none; box-sizing:border-box; } " +
+                    "#ccva-ui-input:focus { border-color:#00a8f3; box-shadow:0px 0px 5px rgba(0,168,243,0.5); } " +
+                    "#ccva-ui-btns { display:flex; justify-content:flex-end; gap:10px; } " +
+                    ".ccva-ui-btn { background:linear-gradient(to bottom, #444 0%, #222 100%); border:1px solid #777; " +
+                    "color:#fff; font-family:inherit; font-size:13px; font-weight:bold; padding:6px 15px; " +
+                    "cursor:pointer; text-shadow:1px 1px 0px #000; border-radius:2px; transition:all 0.1s; } " +
+                    ".ccva-ui-btn:hover { background:linear-gradient(to bottom, #00a8f3 0%, #0077b3 100%); border-color:#fff; } " +
+                    ".ccva-ui-btn:active { background:linear-gradient(to bottom, #0077b3 0%, #005a8a 100%); }";
+                document.head.appendChild(style);
+            }
+
+            var bg = document.createElement('div');
+            bg.id = 'ccva-ui-bg';
+            
+            var modal = document.createElement('div');
+            modal.id = 'ccva-ui-modal';
+            
+            var title = document.createElement('div');
+            title.id = 'ccva-ui-title';
+            
+            var input = document.createElement('input');
+            input.id = 'ccva-ui-input';
+            input.type = 'text';
+
+            var stopPropagation = function(e) { e.stopPropagation(); };
+            input.addEventListener('keydown', stopPropagation);
+            input.addEventListener('keyup', stopPropagation);
+            input.addEventListener('keypress', stopPropagation);
+            
+            var btns = document.createElement('div');
+            btns.id = 'ccva-ui-btns';
+            
+            modal.appendChild(title);
+            modal.appendChild(input);
+            modal.appendChild(btns);
+            bg.appendChild(modal);
+
+            if (document.body) { document.body.appendChild(bg); }
+
+            this._overlay = bg;
+            this._modal = modal;
+            this._title = title;
+            this._input = input;
+            this._btnContainer = btns;
+        },
+
+        _show: function (titleText, isPrompt, defaultVal, callback) {
+            this.init();
+            if (!this._overlay) {
+                if (isPrompt) {
+                    var r = prompt(titleText, defaultVal || "");
+                    if (callback) callback(r);
+                } else {
+                    var c = confirm(titleText);
+                    if (callback) callback(c ? true : false);
+                }
+                return;
+            }
+
+            this._title.innerText = titleText;
+            this._btnContainer.innerHTML = '';
+            
+            var self = this;
+            var cleanup = function() {
+                self._overlay.style.display = 'none';
+                if (window.ig && window.ig.input) window.ig.input.clearPressed();
+            };
+
+            var btnOk = document.createElement('button');
+            btnOk.className = 'ccva-ui-btn';
+            btnOk.innerText = 'OK';
+            
+            var btnCancel = document.createElement('button');
+            btnCancel.className = 'ccva-ui-btn';
+            btnCancel.innerText = 'Cancel';
+
+            if (isPrompt) {
+                this._input.style.display = 'block';
+                this._input.value = defaultVal || '';
+            } else {
+                this._input.style.display = 'none';
+            }
+
+            var submit = function() {
+                cleanup();
+                if (callback) callback(isPrompt ? self._input.value : true);
+            };
+
+            var cancel = function() {
+                cleanup();
+                if (callback) callback(isPrompt ? null : false);
+            };
+
+            btnOk.onclick = submit;
+            btnCancel.onclick = cancel;
+
+            this._input.onkeydown = function(e) {
+                e.stopPropagation();
+                if (e.key === 'Enter') submit();
+                if (e.key === 'Escape') cancel();
+            };
+
+            this._btnContainer.appendChild(btnCancel);
+            this._btnContainer.appendChild(btnOk);
+
+            this._overlay.style.display = 'flex';
+            
+            if (isPrompt) {
+                setTimeout(function() { 
+                    self._input.focus(); 
+                    self._input.select();
+                }, 10);
+            }
+        },
+
+        prompt: function (message, defaultValue, callback) {
+            this._show(message, true, defaultValue, callback);
+        },
+
+        confirm: function (message, callback) {
+            this._show(message, false, null, callback);
+        }
+    };
+
     // ---- Voice Acting Controller ----
     window.ccVoiceActing = {
         config: null,
@@ -300,9 +449,9 @@
         _audio: VA_AUDIO_MANAGER,
         _cache: VA_CACHE_MANAGER,
 
-        // Pre-loaded queue: SHOW_SIDE_MSG events push data here,
-        // showNextSideMessage pops and plays at the right display timing
-        _sideMsgPending: [],
+        // Sequence counter: incremented on every new speak call.
+        // Async TTS results only play if their sequence matches the current one.
+        _speakSeq: 0,
         _lastSpeakTime: 0,
 
         init: function () {
@@ -426,9 +575,15 @@
                 console.log('[CC-VA] Generating on-demand TTS: [' + charName + '] ' + cacheKey + '.mp3 -> "' + entry.text.substring(0, 40) + '..."');
             }
 
+            var mySeq = self._speakSeq;
             return this._tts.generateSpeech(entry.text, entry.voiceId, this.config.apiKey, this.config.model)
                 .then(function (audioData) {
                     self._cache.set(cacheKey, charName, audioData, entry.text);
+                    // Only play if no newer speak call has happened
+                    if (self._speakSeq !== mySeq) {
+                        if (window._ccvaDebug) console.log('[CC-VA] Discarding stale TTS result (seq ' + mySeq + ' != ' + self._speakSeq + ')');
+                        return;
+                    }
                     return self._audio.play(audioData, entry.pitch);
                 })
                 .catch(function (err) {
@@ -438,6 +593,7 @@
 
         // For cutscene dialog (SHOW_MSG) - interrupts previous
         speak: function (charName, rawText) {
+            this._speakSeq++;
             if (this._isSkipping()) {
                 this._audio.stop();
                 return;
@@ -448,22 +604,21 @@
             this._playEntry(entry);
         },
 
-        // Push side message data into the pre-loaded queue
-        pushSideMessage: function (charName, rawText) {
-            // No skip detection here — side messages always fire rapidly
-            // within the same frame. The queue handles sequential playback.
-            var entry = this._prepareSpeak(charName, rawText);
-            if (entry) {
-                this._sideMsgPending.push(entry);
-            }
-        },
-
-        // Pop and play the next pre-loaded side message
-        playSideMessage: function () {
-            if (this._sideMsgPending.length === 0) return;
-            var entry = this._sideMsgPending.shift();
-            this._audio.stop();
-            this._playEntry(entry);
+        // Speak a side message directly (called from showNextSideMessage with what's actually on screen)
+        speakSideMessage: function (charExpression, message) {
+            this._speakSeq++;
+            try {
+                var charName = 'unknown';
+                if (charExpression && charExpression.character) {
+                    charName = charExpression.character.name;
+                }
+                var rawText = message ? message.toString() : '';
+                if (!rawText) return;
+                var entry = this._prepareSpeak(charName, rawText);
+                if (!entry) return;
+                this._audio.stop();
+                this._playEntry(entry);
+            } catch (e) { }
         },
 
         isVoiceActive: function () {
@@ -471,7 +626,7 @@
         },
 
         stopSpeaking: function () {
-            this._sideMsgPending = [];
+            this._speakSeq++;
             this._audio.stop();
         },
 
@@ -535,12 +690,12 @@
                     style.id = 'ccva-debug-style';
                     style.innerHTML = 
                         "#ccva-debug-overlay { position:absolute; bottom:10px; right:10px; z-index:999999; " +
-                        "background:rgba(0,0,0,0.8); color:#fff; padding:8px 12px; border:2px solid #586884; border-radius:3px; " +
+                        "background:linear-gradient(to bottom, #2a2a2a 0%, #1a1a1a 100%); color:#fff; padding:12px 18px; border:2px solid #586884; border-radius:4px; " +
                         "font-family:'Consolas', 'Courier New', monospace; font-size:13px; font-weight:bold; " +
-                        "box-shadow:inset 0px 0px 8px rgba(0,168,243,0.3); text-shadow:1px 1px 0px #000; display:none; } " +
+                        "box-shadow:0px 5px 15px rgba(0,0,0,0.8), inset 0px 0px 10px rgba(0,168,243,0.3); text-shadow:1px 1px 0px #000; display:none; } " +
                         ".ccva-btn { background:linear-gradient(to bottom, #444 0%, #222 100%); border:1px solid #777; " +
                         "color:#fff; font-family:'Consolas', 'Courier New', monospace; font-size:12px; font-weight:bold; " +
-                        "padding:4px 8px; margin-right:5px; cursor:pointer; text-shadow:1px 1px 0px #000; border-radius:2px; transition:all 0.1s; } " +
+                        "padding:6px 15px; margin-right:8px; cursor:pointer; text-shadow:1px 1px 0px #000; border-radius:2px; transition:all 0.1s; } " +
                         ".ccva-btn:hover { background:linear-gradient(to bottom, #00a8f3 0%, #0077b3 100%); border-color:#fff; box-shadow:0px 0px 5px rgba(0,168,243,0.5); } " +
                         ".ccva-btn:active { background:linear-gradient(to bottom, #0077b3 0%, #005a8a 100%); border-color:#fff; }";
                     document.head.appendChild(style);
@@ -562,13 +717,19 @@
                 btnAssign.innerText = 'Set Voice ID';
 
                 var label = document.createElement('div');
-                label.style.marginBottom = '5px';
+                label.style.marginBottom = '8px';
                 label.innerText = 'Last Line: None';
+                
+                var btnClose = document.createElement('button');
+                btnClose.className = 'ccva-btn';
+                btnClose.innerText = 'Close';
+                btnClose.onclick = function() { div.style.display = 'none'; };
 
                 div.appendChild(label);
                 div.appendChild(btnRegen);
                 div.appendChild(btnEdit);
                 div.appendChild(btnAssign);
+                div.appendChild(btnClose);
                 
                 // Mount to nw.js document
                 if (document.body) {
@@ -593,41 +754,70 @@
             if (!this._lastEntry || !this.config.voices) return;
             var entry = this._lastEntry;
             var charName = entry.charName;
+            var self = this;
+            
+            var assignPrompt = function() {
+                var currentId = self.config.voices[charName].voiceId || "";
+                window._ccvaUI.prompt("Enter ElevenLabs Voice ID for '" + charName + "':\n(Leave blank to clear)", currentId, function(newId) {
+                    if (newId === null) return; // cancelled
+                    
+                    var currentPitch = (typeof self.config.voices[charName].pitch === "number" ? self.config.voices[charName].pitch : 1.0).toString();
+                    window._ccvaUI.prompt("Enter Pitch Multiplier for '" + charName + "' (e.g. 1.0, 0.85, 1.25):", currentPitch, function(newPitch) {
+                        if (newPitch === null) return;
+                        
+                        var parsed = parseFloat(newPitch);
+                        if (!isNaN(parsed) && parsed > 0) {
+                            self.config.voices[charName].pitch = parsed;
+                            entry.pitch = parsed;
+                        }
+
+                        newId = newId.trim();
+                        self.config.voices[charName].voiceId = newId;
+                        self.config.voices[charName].enabled = true;
+                        entry.voiceId = newId;
+                        
+                        // Instantly update any pre-buffered side-messages waiting to play
+                        if (self._sideMsgPending) {
+                            for (var i = 0; i < self._sideMsgPending.length; i++) {
+                                if (self._sideMsgPending[i].charName === charName) {
+                                    self._sideMsgPending[i].voiceId = newId;
+                                }
+                            }
+                        }
+                        
+                        try {
+                            var fs = require('fs');
+                            var path = require('path');
+                            var gameRoot = path.resolve('.');
+                            var configPath = path.join(gameRoot, 'assets', 'mod-data', 'cc-ava', 'voice-config.json');
+                            fs.writeFileSync(configPath, JSON.stringify(self.config, null, 4), 'utf-8');
+                            
+                            // Immediately synchronize to the CCModManager UI options so it persists visually next time user opens the menu
+                            if (window.modmanager && window.modmanager.options && window.modmanager.options["cc-ava"]) {
+                                window.modmanager.options["cc-ava"]["va-" + charName + "-id"] = newId;
+                            }
+                            
+                            console.log('[CC-VA] Saved new Voice ID for ' + charName + ': ' + newId);
+                        } catch (e) {
+                            console.error('[CC-VA] Failed to save config:', e);
+                        }
+                        
+                        // Auto-regenerate and play to preview immediately
+                        if (newId) {
+                            self._regenerateLast(false);
+                        }
+                    });
+                });
+            };
             
             if (!this.config.voices[charName]) {
-                var addIt = confirm("Character '" + charName + "' is not currently recognized in the mod configuration. Add them as a trackable entity?");
-                if (!addIt) return;
-                this.config.voices[charName] = { enabled: true, label: charName, pitch: 1 };
-            }
-            
-            var currentId = this.config.voices[charName].voiceId || "";
-            var newId = prompt("Enter ElevenLabs Voice ID for '" + charName + "':\n(Leave blank to clear)", currentId);
-            if (newId === null) return; // cancelled
-            
-            newId = newId.trim();
-            this.config.voices[charName].voiceId = newId;
-            entry.voiceId = newId;
-            
-            try {
-                var fs = require('fs');
-                var path = require('path');
-                var gameRoot = path.resolve('.');
-                var configPath = path.join(gameRoot, 'assets', 'mod-data', 'cc-ava', 'voice-config.json');
-                fs.writeFileSync(configPath, JSON.stringify(this.config, null, 4), 'utf-8');
-                
-                // Immediately synchronize to the CCModManager UI options so it persists visually next time user opens the menu
-                if (window.modmanager && window.modmanager.options && window.modmanager.options["cc-ava"]) {
-                    window.modmanager.options["cc-ava"]["va-" + charName + "-id"] = newId;
-                }
-                
-                console.log('[CC-VA] Saved new Voice ID for ' + charName + ': ' + newId);
-            } catch (e) {
-                console.error('[CC-VA] Failed to save config:', e);
-            }
-            
-            // Auto-regenerate and play to preview immediately
-            if (newId) {
-                this._regenerateLast(false);
+                window._ccvaUI.confirm("Character '" + charName + "' is not currently recognized in the mod configuration. Add them as a trackable entity?", function(addIt) {
+                    if (!addIt) return;
+                    self.config.voices[charName] = { enabled: true, label: charName, pitch: 1 };
+                    assignPrompt();
+                });
+            } else {
+                assignPrompt();
             }
         },
 
@@ -641,41 +831,46 @@
                 return;
             }
             
-            var textToGen = entry.text;
+            var proceedGen = function(textToGen) {
+                var cacheKey = self._tts.getCacheKey(entry.originalText, entry.voiceId);
+                self._cache.delete(cacheKey, entry.charName);
+                
+                console.log('[CC-VA] Regenerating TTS: ' + cacheKey + '.mp3 -> "' + textToGen + '"');
+                self._tts.generateSpeech(textToGen, entry.voiceId, self.config.apiKey, self.config.model)
+                    .then(function (audioData) {
+                        self._cache.set(cacheKey, entry.charName, audioData, textToGen);
+                        self._audio.play(audioData, entry.pitch);
+                    })
+                    .catch(function (err) {
+                        console.error('[CC-VA] TTS Regeneration error:', err.message || err);
+                    });
+            };
             
             if (withEdit) {
-                var newText = prompt("Edit text specifically for ElevenLabs generation (This natively overwrites what it sends for this exact line):", entry.text);
-                if (newText === null) return; // cancelled
-                textToGen = newText.trim();
-                
-                // Save to json
-                if (!this.config.transcriptionOverrides) this.config.transcriptionOverrides = {};
-                this.config.transcriptionOverrides[entry.originalText] = textToGen;
-                
-                try {
-                    var fs = require('fs');
-                    var path = require('path');
-                    var gameRoot = path.resolve('.');
-                    var configPath = path.join(gameRoot, 'assets', 'mod-data', 'cc-ava', 'voice-config.json');
-                    fs.writeFileSync(configPath, JSON.stringify(this.config, null, 4), 'utf-8');
-                    console.log('[CC-VA] Saved new transcription override for: "' + entry.originalText + '"');
-                } catch (e) {
-                    console.error('[CC-VA] Failed to save transcription override:', e);
-                }
-            }
-
-            var cacheKey = this._tts.getCacheKey(entry.originalText, entry.voiceId);
-            this._cache.delete(cacheKey, entry.charName);
-            
-            console.log('[CC-VA] Regenerating TTS: ' + cacheKey + '.mp3 -> "' + textToGen + '"');
-            this._tts.generateSpeech(textToGen, entry.voiceId, this.config.apiKey, this.config.model)
-                .then(function (audioData) {
-                    self._cache.set(cacheKey, entry.charName, audioData, textToGen);
-                    self._audio.play(audioData, entry.pitch);
-                })
-                .catch(function (err) {
-                    console.error('[CC-VA] TTS Regeneration error:', err.message || err);
+                window._ccvaUI.prompt("Edit text specifically for ElevenLabs generation (This natively overwrites what it sends for this exact line):", entry.text, function(newText) {
+                    if (newText === null) return; // cancelled
+                    var textToGen = newText.trim();
+                    
+                    // Save to json
+                    if (!self.config.transcriptionOverrides) self.config.transcriptionOverrides = {};
+                    self.config.transcriptionOverrides[entry.originalText] = textToGen;
+                    
+                    try {
+                        var fs = require('fs');
+                        var path = require('path');
+                        var gameRoot = path.resolve('.');
+                        var configPath = path.join(gameRoot, 'assets', 'mod-data', 'cc-ava', 'voice-config.json');
+                        fs.writeFileSync(configPath, JSON.stringify(self.config, null, 4), 'utf-8');
+                        console.log('[CC-VA] Saved new transcription override for: "' + entry.originalText + '"');
+                    } catch (e) {
+                        console.error('[CC-VA] Failed to save transcription override:', e);
+                    }
+                    
+                    proceedGen(textToGen);
                 });
+            } else {
+                proceedGen(entry.text);
+            }
         }
     };
 
@@ -706,29 +901,8 @@
         )
         .defines(function () {
 
-            // ---- Hook SHOW_SIDE_MSG ----
-            // Pre-load voice data into the queue. Voice is played later
-            // when showNextSideMessage actually displays the message.
-            if (ig.EVENT_STEP.SHOW_SIDE_MSG) {
-                ig.EVENT_STEP.SHOW_SIDE_MSG.inject({
-                    start: function () {
-                        // Push voice data BEFORE parent() because parent() synchronously
-                        // triggers: showSideMessage → modelChanged → showNextSideMessage → playSideMessage
-                        // The queue entry must exist before that chain fires.
-                        try {
-                            var charName = (this.charExpression && this.charExpression.character)
-                                ? this.charExpression.character.name : 'unknown';
-                            var text = this.message ? this.message.toString() : '';
-                            if (text) {
-                                window.ccVoiceActing.pushSideMessage(charName, text);
-                            }
-                        } catch (e) { }
-                        this.parent();
-                        // Look-ahead: pre-generate next dialog line in background
-                        try { window.ccVoiceActing._prefetchNext(this); } catch (e) { }
-                    }
-                });
-            }
+            // SHOW_SIDE_MSG: no hook needed — voice is triggered directly
+            // from showNextSideMessage which reads what's actually on screen
 
             // ---- Hook SHOW_MSG ----
             if (ig.EVENT_STEP.SHOW_MSG) {
@@ -770,6 +944,18 @@
             }
 
             if (window._ccvaDebug) console.log('[CC-VA] Dialog hooks installed');
+
+            // ---- Stop voice on cutscene skip ----
+            if (sc.GameModel) {
+                sc.GameModel.inject({
+                    skipCutscene: function () {
+                        if (window.ccVoiceActing) {
+                            window.ccVoiceActing.stopSpeaking();
+                        }
+                        this.parent();
+                    }
+                });
+            }
         });
 
     // ---- Hook side message HUD for voice sync ----
@@ -782,12 +968,16 @@
             if (sc.SideMessageHudGui) {
                 sc.SideMessageHudGui.inject({
 
-                    // When a side message actually displays, play its pre-loaded voice
+                    // When a side message actually displays, speak what's on screen
                     showNextSideMessage: function () {
+                        // Peek at what the game is about to display (sideMessageStack is shifted by getNextSideMessage inside parent)
+                        var msgData = null;
+                        try { msgData = sc.model.message.sideMessageStack[0]; } catch (e) { }
                         this.parent();
-                        try {
-                            window.ccVoiceActing.playSideMessage();
-                        } catch (e) { }
+                        // Speak the message that just appeared
+                        if (msgData && window.ccVoiceActing) {
+                            window.ccVoiceActing.speakSideMessage(msgData.charExpression, msgData.message);
+                        }
                     },
 
                     // Prevent advancing to the next message while voice is playing
