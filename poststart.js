@@ -137,6 +137,10 @@ ig.module('cc-ava.poststart')
                                         configData.debug = isOn;
                                         window._ccvaDebug = isOn;
                                         saveConfig();
+                                        
+                                        if (!isOn && window.ccVoiceActing && window.ccVoiceActing._debugOverlay) {
+                                            window.ccVoiceActing._debugOverlay.style.display = 'none';
+                                        }
                                     }
                                 }
                             }
@@ -216,6 +220,25 @@ ig.module('cc-ava.poststart')
                 // Add custom character tabs to CCModManager options
                 customOptions["Story (" + storyCount + ")"] = storyTab;
                 customOptions["Generic NPCs (" + genericKeys.length + ")"] = genericTab;
+
+                // Force sync CCModManager's cached options from disk truths before registering
+                if (window.modmanager && window.modmanager.options) {
+                    if (!window.modmanager.options["cc-ava"]) {
+                        window.modmanager.options["cc-ava"] = {};
+                    }
+                    var ccOpt = window.modmanager.options["cc-ava"];
+                    ccOpt["va-api-key"] = configData.apiKey || "";
+                    ccOpt["va-model-selection"] = initModelIdx;
+                    ccOpt["va-debug-mode"] = !!configData.debug;
+                    
+                    allKeys.forEach(function(k) {
+                        var v = configData.voices[k];
+                        if (v) {
+                            ccOpt["va-" + k + "-id"] = v.voiceId || "";
+                            ccOpt["va-" + k + "-pitch"] = (typeof v.pitch === "number" ? v.pitch : 1.0).toString();
+                        }
+                    });
+                }
 
                 window.modmanager.registerAndGetModOptions(
                     {

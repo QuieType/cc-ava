@@ -257,6 +257,20 @@
             }
         },
 
+        delete: function (cacheKey, charName) {
+            if (!this._ready) return;
+            try {
+                var dir = charName ? this._path.join(this._cacheDir, charName) : this._cacheDir;
+                var filePath = this._path.join(dir, cacheKey + '.mp3');
+                if (this._fs.existsSync(filePath)) {
+                    this._fs.unlinkSync(filePath);
+                    if (window._ccvaDebug) console.log('[CC-VA] Deleted cache file: ' + filePath);
+                }
+            } catch (e) {
+                console.error('[CC-VA] Cache delete error:', e);
+            }
+        },
+
         getCacheSize: function () {
             if (!this._ready) return 0;
             var self = this;
@@ -369,21 +383,31 @@
             if (!text) return null;
             if (this._tts.shouldSkip(text, this.config.skipPatterns)) return null;
 
-            var voiceId = this._resolveVoice(charName);
-            if (!voiceId) return null;
+            var originalText = text;
+            if (this.config.transcriptionOverrides && this.config.transcriptionOverrides[originalText]) {
+                text = this.config.transcriptionOverrides[originalText];
+            }
+
+            var voiceId = this._resolveVoice(charName) || "";
 
             var pitch = 1.0;
-            if (this.config.voices[charName] && this.config.voices[charName].pitch !== undefined) {
+            if (this.config.voices && this.config.voices[charName] && this.config.voices[charName].pitch !== undefined) {
                 pitch = this.config.voices[charName].pitch;
             }
 
-            return { text: text, voiceId: voiceId, charName: charName, pitch: pitch };
+            return { text: text, originalText: originalText, voiceId: voiceId, charName: charName, pitch: pitch };
         },
 
         _playEntry: function (entry) {
             var self = this;
-            var cacheKey = this._tts.getCacheKey(entry.text, entry.voiceId);
             var charName = entry.charName;
+
+            this._lastEntry = entry;
+            if (window._ccvaDebug) this._updateDebugOverlay(entry);
+
+            if (!entry.voiceId) return Promise.resolve();
+
+            var cacheKey = this._tts.getCacheKey(entry.originalText, entry.voiceId);
 
             if (this._cache.has(cacheKey, charName)) {
                 var cachedAudio = this._cache.get(cacheKey, charName);
@@ -475,9 +499,9 @@
                 if (!rawText) return;
 
                 var entry = this._prepareSpeak(charName, rawText);
-                if (!entry) return;
+                if (!entry || !entry.voiceId) return;
 
-                var cacheKey = this._tts.getCacheKey(entry.text, entry.voiceId);
+                var cacheKey = this._tts.getCacheKey(entry.originalText, entry.voiceId);
                 // Already cached — nothing to do
                 if (this._cache.has(cacheKey, entry.charName)) return;
 
@@ -502,6 +526,156 @@
             } catch (e) {
                 // Never let pre-fetch errors interrupt gameplay
             }
+        },
+
+        _updateDebugOverlay: function (entry) {
+            if (!this._debugOverlay) {
+                if (!document.getElementById('ccva-debug-style')) {
+                    var style = document.createElement('style');
+                    style.id = 'ccva-debug-style';
+                    style.innerHTML = 
+                        "#ccva-debug-overlay { position:absolute; bottom:10px; right:10px; z-index:999999; " +
+                        "background:rgba(0,0,0,0.8); color:#fff; padding:8px 12px; border:2px solid #586884; border-radius:3px; " +
+                        "font-family:'Consolas', 'Courier New', monospace; font-size:13px; font-weight:bold; " +
+                        "box-shadow:inset 0px 0px 8px rgba(0,168,243,0.3); text-shadow:1px 1px 0px #000; display:none; } " +
+                        ".ccva-btn { background:linear-gradient(to bottom, #444 0%, #222 100%); border:1px solid #777; " +
+                        "color:#fff; font-family:'Consolas', 'Courier New', monospace; font-size:12px; font-weight:bold; " +
+                        "padding:4px 8px; margin-right:5px; cursor:pointer; text-shadow:1px 1px 0px #000; border-radius:2px; transition:all 0.1s; } " +
+                        ".ccva-btn:hover { background:linear-gradient(to bottom, #00a8f3 0%, #0077b3 100%); border-color:#fff; box-shadow:0px 0px 5px rgba(0,168,243,0.5); } " +
+                        ".ccva-btn:active { background:linear-gradient(to bottom, #0077b3 0%, #005a8a 100%); border-color:#fff; }";
+                    document.head.appendChild(style);
+                }
+
+                var div = document.createElement('div');
+                div.id = 'ccva-debug-overlay';
+
+                var btnRegen = document.createElement('button');
+                btnRegen.className = 'ccva-btn';
+                btnRegen.innerText = 'Regenerate Line';
+                
+                var btnEdit = document.createElement('button');
+                btnEdit.className = 'ccva-btn';
+                btnEdit.innerText = 'Edit TTS Text';
+
+                var btnAssign = document.createElement('button');
+                btnAssign.className = 'ccva-btn';
+                btnAssign.innerText = 'Set Voice ID';
+
+                var label = document.createElement('div');
+                label.style.marginBottom = '5px';
+                label.innerText = 'Last Line: None';
+
+                div.appendChild(label);
+                div.appendChild(btnRegen);
+                div.appendChild(btnEdit);
+                div.appendChild(btnAssign);
+                
+                // Mount to nw.js document
+                if (document.body) {
+                    document.body.appendChild(div);
+                }
+
+                this._debugOverlay = div;
+                this._debugLabel = label;
+
+                var self = this;
+                btnRegen.onclick = function() { self._regenerateLast(false); };
+                btnEdit.onclick = function() { self._regenerateLast(true); };
+                btnAssign.onclick = function() { self._assignVoiceId(); };
+            }
+
+            this._debugOverlay.style.display = 'block';
+            var trunc = entry.originalText.length > 50 ? entry.originalText.substring(0, 50) + '...' : entry.originalText;
+            this._debugLabel.innerText = 'Last Line: [' + entry.charName + '] ' + trunc;
+        },
+
+        _assignVoiceId: function () {
+            if (!this._lastEntry || !this.config.voices) return;
+            var entry = this._lastEntry;
+            var charName = entry.charName;
+            
+            if (!this.config.voices[charName]) {
+                var addIt = confirm("Character '" + charName + "' is not currently recognized in the mod configuration. Add them as a trackable entity?");
+                if (!addIt) return;
+                this.config.voices[charName] = { enabled: true, label: charName, pitch: 1 };
+            }
+            
+            var currentId = this.config.voices[charName].voiceId || "";
+            var newId = prompt("Enter ElevenLabs Voice ID for '" + charName + "':\n(Leave blank to clear)", currentId);
+            if (newId === null) return; // cancelled
+            
+            newId = newId.trim();
+            this.config.voices[charName].voiceId = newId;
+            entry.voiceId = newId;
+            
+            try {
+                var fs = require('fs');
+                var path = require('path');
+                var gameRoot = path.resolve('.');
+                var configPath = path.join(gameRoot, 'assets', 'mod-data', 'cc-ava', 'voice-config.json');
+                fs.writeFileSync(configPath, JSON.stringify(this.config, null, 4), 'utf-8');
+                
+                // Immediately synchronize to the CCModManager UI options so it persists visually next time user opens the menu
+                if (window.modmanager && window.modmanager.options && window.modmanager.options["cc-ava"]) {
+                    window.modmanager.options["cc-ava"]["va-" + charName + "-id"] = newId;
+                }
+                
+                console.log('[CC-VA] Saved new Voice ID for ' + charName + ': ' + newId);
+            } catch (e) {
+                console.error('[CC-VA] Failed to save config:', e);
+            }
+            
+            // Auto-regenerate and play to preview immediately
+            if (newId) {
+                this._regenerateLast(false);
+            }
+        },
+
+        _regenerateLast: function (withEdit) {
+            if (!this._lastEntry || !this.config.generateOnDemand || !this.config.apiKey) return;
+            var self = this;
+            var entry = this._lastEntry;
+            
+            if (!entry.voiceId) {
+                console.log("[CC-VA] Regeneration aborted: No Voice ID assigned for " + entry.charName);
+                return;
+            }
+            
+            var textToGen = entry.text;
+            
+            if (withEdit) {
+                var newText = prompt("Edit text specifically for ElevenLabs generation (This natively overwrites what it sends for this exact line):", entry.text);
+                if (newText === null) return; // cancelled
+                textToGen = newText.trim();
+                
+                // Save to json
+                if (!this.config.transcriptionOverrides) this.config.transcriptionOverrides = {};
+                this.config.transcriptionOverrides[entry.originalText] = textToGen;
+                
+                try {
+                    var fs = require('fs');
+                    var path = require('path');
+                    var gameRoot = path.resolve('.');
+                    var configPath = path.join(gameRoot, 'assets', 'mod-data', 'cc-ava', 'voice-config.json');
+                    fs.writeFileSync(configPath, JSON.stringify(this.config, null, 4), 'utf-8');
+                    console.log('[CC-VA] Saved new transcription override for: "' + entry.originalText + '"');
+                } catch (e) {
+                    console.error('[CC-VA] Failed to save transcription override:', e);
+                }
+            }
+
+            var cacheKey = this._tts.getCacheKey(entry.originalText, entry.voiceId);
+            this._cache.delete(cacheKey, entry.charName);
+            
+            console.log('[CC-VA] Regenerating TTS: ' + cacheKey + '.mp3 -> "' + textToGen + '"');
+            this._tts.generateSpeech(textToGen, entry.voiceId, this.config.apiKey, this.config.model)
+                .then(function (audioData) {
+                    self._cache.set(cacheKey, entry.charName, audioData, textToGen);
+                    self._audio.play(audioData, entry.pitch);
+                })
+                .catch(function (err) {
+                    console.error('[CC-VA] TTS Regeneration error:', err.message || err);
+                });
         }
     };
 
