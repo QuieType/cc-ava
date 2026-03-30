@@ -1619,10 +1619,11 @@
         "lea": "[in IPA] liä",
         "Faj'ro": "[in IPA] faɪ-roʊ",
         "faj'ro": "[in IPA] faɪ-roʊ",
-        "Ba'kii Kum": "[in IPA] baki kɯm",
+        "Ba'kii Kum": "[in IPA] baki kʉm",
         "Zir'vitar": "[in IPA] zɪr-vɪtɐr",
         "So'najiz": "[in IPA] soʊ-naɪs",
-        "Krys'kajo": "[in IPA] kɹɪs-kaɪoʊ"
+        "Krys'kajo": "[in IPA] kɹɪs-kaɪoʊ",
+        "Ku'lero": "[in IPA] ku-læroʊ"
     },
     "skipPatterns": [
         "^[.!?\\-…\\s]+$",
