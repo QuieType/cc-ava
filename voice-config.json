@@ -1615,10 +1615,10 @@
         }
     },
     "pronunciations": {
-        "Lea": "[in the International Phonetic Alphabet] Liä",
-        "lea": "[in the International Phonetic Alphabet] Liä",
-        "Faj'ro": "Fah-ee-roh",
-        "faj'ro": "Fah-ee-roh",
+        "Lea": "[in IPA] Liä",
+        "lea": "[in IPA] Liä",
+        "Faj'ro": "Faɪroʊ",
+        "faj'ro": "Faɪroʊ",
         "Ba'kii Kum": "Bah-Key-Kuum"
     },
     "skipPatterns": [
