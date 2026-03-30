@@ -1615,11 +1615,12 @@
         }
     },
     "pronunciations": {
-        "Lea": "[in IPA] Liä",
-        "lea": "[in IPA] Liä",
-        "Faj'ro": "[in IPA] Faɪroʊ",
-        "faj'ro": "[in IPA] Faɪroʊ",
-        "Ba'kii Kum": "[in IPA] Baki Kɯm"
+        "Lea": "[in IPA] liä",
+        "lea": "[in IPA] liä",
+        "Faj'ro": "[in IPA] faɪ-roʊ",
+        "faj'ro": "[in IPA] faɪ-roʊ",
+        "Ba'kii Kum": "[in IPA] baki kɯm",
+        "Zir'vitar": "[in IPA] zɪr-vɪtɐr"
     },
     "skipPatterns": [
         "^[.!?\\-…\\s]+$",
