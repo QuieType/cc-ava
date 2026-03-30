@@ -1617,9 +1617,9 @@
     "pronunciations": {
         "Lea": "[in IPA] Liä",
         "lea": "[in IPA] Liä",
-        "Faj'ro": "Faɪroʊ",
-        "faj'ro": "Faɪroʊ",
-        "Ba'kii Kum": "Bah-Key-Kuum"
+        "Faj'ro": "[in IPA] Faɪroʊ",
+        "faj'ro": "[in IPA] Faɪroʊ",
+        "Ba'kii Kum": "[in IPA] Baki Kɯm"
     },
     "skipPatterns": [
         "^[.!?\\-…\\s]+$",
