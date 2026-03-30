@@ -1621,7 +1621,8 @@
         "faj'ro": "[in IPA] faɪ-roʊ",
         "Ba'kii Kum": "[in IPA] baki kɯm",
         "Zir'vitar": "[in IPA] zɪr-vɪtɐr",
-        "So'najiz" : "[in IPA] soʊ-naɪs"
+        "So'najiz": "[in IPA] soʊ-naɪs",
+        "Krys'kajo": "[in IPA] kɹɪs-kaɪoʊ"
     },
     "skipPatterns": [
         "^[.!?\\-…\\s]+$",
