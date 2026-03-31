@@ -215,6 +215,17 @@ ig.module('cc-ava.poststart')
                 customOptions["Story (" + storyCount + ")"] = storyTab;
                 customOptions["Generic NPCs (" + genericKeys.length + ")"] = genericTab;
 
+                // Force sync CCModManager's cached options from disk truths before registering
+                if (window.modmanager && window.modmanager.options) {
+                    if (!window.modmanager.options["cc-ava"]) {
+                        window.modmanager.options["cc-ava"] = {};
+                    }
+                    var ccOpt = window.modmanager.options["cc-ava"];
+                    ccOpt["va-model-selection"] = initModelIdx;
+                    ccOpt["va-debug-mode"] = !!configData.debug;
+                    
+                }
+
                 window.modmanager.registerAndGetModOptions(
                     {
                         modId: "cc-ava",
@@ -222,13 +233,6 @@ ig.module('cc-ava.poststart')
                     },
                     customOptions
                 );
-
-                // Sync CCModManager's cached options from config after registration creates the options object
-                if (window.modmanager.options && window.modmanager.options["cc-ava"]) {
-                    var ccOpt = window.modmanager.options["cc-ava"];
-                    ccOpt["va-model-selection"] = initModelIdx;
-                    ccOpt["va-debug-mode"] = !!configData.debug;
-                }
             } catch (e) {
                 console.error("[CC-VA] ModManager hook failed:", e);
             }
@@ -256,18 +260,25 @@ ig.module('cc-ava.poststart')
             langLabels.sc.gui.options['voice-volume'].description = 'Adjusts the volume of AI-generated voice acting.';
         }
 
-        // Rebuild sc.OPTIONS_DEFINITION sequentially to correctly place the slider under sound volume
-        var oldOptions = sc.OPTIONS_DEFINITION;
-        sc.OPTIONS_DEFINITION = {};
-        for (var key in oldOptions) {
-            sc.OPTIONS_DEFINITION[key] = oldOptions[key];
-            if (key === 'volume-sound') {
-                sc.OPTIONS_DEFINITION['voice-volume'] = voiceVolumeConfig;
+        // Insert voice-volume right after volume-sound by reordering properties in-place
+        // (preserves the original object reference — replacing it breaks CCModManager)
+        var keys = Object.keys(sc.OPTIONS_DEFINITION);
+        var insertIdx = keys.indexOf('volume-sound');
+        if (insertIdx >= 0) {
+            // Collect keys that come after volume-sound
+            var afterKeys = keys.slice(insertIdx + 1);
+            var saved = {};
+            for (var i = 0; i < afterKeys.length; i++) {
+                saved[afterKeys[i]] = sc.OPTIONS_DEFINITION[afterKeys[i]];
+                delete sc.OPTIONS_DEFINITION[afterKeys[i]];
             }
-        }
-
-        // Fallback injection if the loop above failed to find the exact key name
-        if (!sc.OPTIONS_DEFINITION['voice-volume']) {
+            // Insert ours (now it's right after volume-sound)
+            sc.OPTIONS_DEFINITION['voice-volume'] = voiceVolumeConfig;
+            // Re-add the rest in original order
+            for (var j = 0; j < afterKeys.length; j++) {
+                sc.OPTIONS_DEFINITION[afterKeys[j]] = saved[afterKeys[j]];
+            }
+        } else {
             sc.OPTIONS_DEFINITION['voice-volume'] = voiceVolumeConfig;
         }
 
